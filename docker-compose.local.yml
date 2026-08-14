@@ -1,0 +1,79 @@
+volumes:
+  stage_link_local_postgres_data: {}
+  stage_link_local_postgres_data_backups: {}
+  stage_link_local_redis_data: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: stage_link_local_django
+    container_name: stage_link_local_django
+    depends_on:
+      - postgres
+      - redis
+      - mailpit
+    volumes:
+      - /app/.venv
+      - .:/app:z
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    ports:
+      - '8000:8000'
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: stage_link_production_postgres
+    container_name: stage_link_local_postgres
+    volumes:
+      - stage_link_local_postgres_data:/var/lib/postgresql/18/docker
+      - stage_link_local_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: stage_link_local_mailpit
+    ports:
+      - "8025:8025"
+
+  redis:
+    image: docker.io/redis:7.2
+    container_name: stage_link_local_redis
+    volumes:
+      - stage_link_local_redis_data:/data
+
+  celeryworker:
+    <<: *django
+    image: stage_link_local_celeryworker
+    container_name: stage_link_local_celeryworker
+    depends_on:
+      - redis
+      - postgres
+      - mailpit
+    ports: []
+    command: /start-celeryworker
+
+  celerybeat:
+    <<: *django
+    image: stage_link_local_celerybeat
+    container_name: stage_link_local_celerybeat
+    depends_on:
+      - redis
+      - postgres
+      - mailpit
+    ports: []
+    command: /start-celerybeat
+
+  flower:
+    <<: *django
+    image: stage_link_local_flower
+    container_name: stage_link_local_flower
+    ports:
+      - '5555:5555'
+    command: /start-flower
